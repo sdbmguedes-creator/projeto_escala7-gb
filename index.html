@@ -106,7 +106,7 @@
 <script>
 const SUPABASE_URL = 'https://tkhflrugunfgjguhpyrm.supabase.co';
 const SUPABASE_KEY = 'sb_publishable__myLizw_q3ePD-eJa_sMZQ_SG7F7_Wm';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let usuario = null;
 let competencia = new Date().toISOString().slice(0,7); // YYYY-MM
@@ -119,7 +119,7 @@ document.getElementById('btnLogin').onclick = async () => {
   const senha = document.getElementById('senha').value;
   const msg = document.getElementById('loginMsg');
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: senha });
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: senha });
     if (error) { msg.hidden = false; msg.textContent = error.message; return; }
     usuario = data.user;
     document.getElementById('userInfo').textContent = email;
@@ -154,7 +154,7 @@ document.getElementById('btnCadastrarMilitar').onclick = async () => {
   };
   if (!militar.matricula || !militar.nome) { msg.hidden = false; msg.textContent = 'Preencha matrícula e nome.'; return; }
   try {
-    const { error } = await supabase.from('militares').insert(militar);
+    const { error } = await sb.from('militares').insert(militar);
     if (error) { msg.hidden = false; msg.textContent = error.message; return; }
     msg.hidden = true;
     ['cadMatricula','cadNome'].forEach(id => document.getElementById(id).value = '');
@@ -175,10 +175,10 @@ async function init() {
 
 // ---------- Carregar dados ----------
 async function carregarDados() {
-  const { data: m } = await supabase.from('militares').select('*').eq('ativo', true).order('nome');
+  const { data: m } = await sb.from('militares').select('*').eq('ativo', true).order('nome');
   militares = m || [];
 
-  const { data: g } = await supabase.from('grades_diarias').select('*').eq('competencia', competencia + '-01');
+  const { data: g } = await sb.from('grades_diarias').select('*').eq('competencia', competencia + '-01');
   grades = g || [];
 
   render();
@@ -234,9 +234,9 @@ async function salvarGrade(milId, dia, codigo) {
   if (existente && existente.codigo === codigo) return;
 
   if (existente) {
-    await supabase.from('grades_diarias').update({ codigo }).eq('id', existente.id);
+    await sb.from('grades_diarias').update({ codigo }).eq('id', existente.id);
   } else {
-    await supabase.from('grades_diarias').insert({ competencia: competencia + '-01', dia, militar_id: milId, codigo });
+    await sb.from('grades_diarias').insert({ competencia: competencia + '-01', dia, militar_id: milId, codigo });
   }
   await carregarDados(); // recarrega para refletir no Realtime
 }
@@ -249,7 +249,7 @@ document.getElementById('competencia').onchange = (e) => {
 
 // ---------- Realtime (atualiza ao vivo para todos) ----------
 function setupRealtime() {
-  const channel = supabase.channel('grades-channel');
+  const channel = sb.channel('grades-channel');
   channel.on('postgres_changes', { event: '*', schema: 'public', table: 'grades_diarias' }, () => {
     carregarDados();
   }).subscribe();
