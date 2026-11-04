@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escala 7º GB — CBMPE</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .cell { width: 48px; height: 32px; }
+</style>
+</head>
+<body class="bg-gray-50 p-4">
+
+<div class="max-w-6xl mx-auto">
+  <header class="mb-6 flex justify-between items-center">
+    <h1 class="text-2xl font-bold text-blue-900">Escala 7º GB — CBMPE</h1>
+    <div class="text-sm text-gray-600" id="userInfo">Não logado</div>
+  </header>
+
+  <!-- Login -->
+  <div id="loginCard" class="bg-white p-6 rounded shadow mb-6">
+    <h2 class="text-lg font-semibold mb-4">Entrar</h2>
+    <input id="email" type="email" placeholder="E-mail" class="border p-2 w-full mb-2">
+    <input id="senha" type="password" placeholder="Senha" class="border p-2 w-full mb-2">
+    <button id="btnLogin" class="bg-blue-600 text-white px-4 py-2 rounded w-full">Entrar</button>
+    <p id="loginMsg" class="text-red-600 text-sm mt-2 hidden"></p>
+    <p class="text-xs text-gray-500 mt-3">Cadastre os 5 usuários em Authentication → Users no Supabase.</p>
+  </div>
+
+  <!-- Cadastro de militares -->
+  <div id="cadastroCard" class="bg-white p-6 rounded shadow mb-6 hidden">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-semibold">Cadastro de Militar</h2>
+      <button id="btnFecharCadastro" class="text-gray-600 hover:text-gray-900 text-sm">× Fechar</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <input id="cadMatricula" type="text" placeholder="Matrícula" class="border p-2 w-full">
+      <input id="cadNome" type="text" placeholder="Nome" class="border p-2 w-full">
+      <select id="cadSecao" class="border p-2 w-full">
+        <option value="1ªSB">1ªSB</option>
+        <option value="2ªSB">2ªSB</option>
+        <option value="3ªSB">3ªSB</option>
+        <option value="4ªSB">4ªSB</option>
+        <option value="ADM">ADM</option>
+      </select>
+      <select id="cadEscala" class="border p-2 w-full">
+        <option value="ALFA">ALFA</option>
+        <option value="BRAVO">BRAVO</option>
+        <option value="CHARLIE">CHARLIE</option>
+        <option value="DELTA">DELTA</option>
+        <option value="ADM">ADM</option>
+        <option value="X - A">X - A</option>
+        <option value="X - B">X - B</option>
+        <option value="X - C">X - C</option>
+        <option value="X - D">X - D</option>
+        <option value="X - ADM">X - ADM</option>
+      </select>
+      <div class="flex items-center gap-2">
+        <input id="cadMotorista" type="checkbox" class="w-4 h-4">
+        <label class="text-sm">Motorista</label>
+      </div>
+    </div>
+    <button id="btnCadastrarMilitar" class="bg-indigo-600 text-white px-4 py-2 rounded w-full">Cadastrar</button>
+    <p id="cadMsg" class="text-red-600 text-sm mt-2 hidden"></p>
+    <p class="text-xs text-gray-500 mt-3">A tabela de escala abaixo é preenchida automaticamente ao salvar este mês.</p>
+  </div>
+
+  <!-- App -->
+  <div id="appCard" class="bg-white p-6 rounded shadow hidden">
+    <div class="flex justify-between items-end mb-4">
+      <div class="flex gap-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Competência</label>
+          <input id="competencia" type="month" class="border p-2 mt-1 w-48">
+        </div>
+        <button id="btnCadastro" class="bg-indigo-600 text-white px-4 py-2 rounded text-sm">Cadastro Militar</button>
+      </div>
+      <button id="btnSalvar" class="bg-green-600 text-white px-4 py-2 rounded">Salvar alterações</button>
+    </div>
+
+    <div id="vazioMsg" class="text-center text-gray-500 py-10 border rounded hidden">
+      Nenhum militar cadastrado. Use "Cadastro Militar" para adicionar.
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full border-collapse text-sm">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="text-left p-2 border">Militar</th>
+            <th class="text-left p-2 border">Seção</th>
+            <th class="text-left p-2 border">Escala</th>
+            <th class="text-center p-2 border" colspan="31">Dias</th>
+          </tr>
+          <tr class="bg-gray-50">
+            <th colspan="3"></th>
+            <th class="text-center p-1 border" id="dias-header"></th>
+          </tr>
+        </thead>
+        <tbody id="tabela-corpo"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+const SUPABASE_URL = 'https://tkhflrugunfgjguhpyrm.supabase.co';
+const SUPABASE_KEY = 'sb_publishable__myLizw_q3ePD-eJa_sMZQ_SG7F7_Wm';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let usuario = null;
+let competencia = new Date().toISOString().slice(0,7); // YYYY-MM
+let militares = [];
+let grades = [];
+
+// ---------- Login ----------
+document.getElementById('btnLogin').onclick = async () => {
+  const email = document.getElementById('email').value;
+  const senha = document.getElementById('senha').value;
+  const msg = document.getElementById('loginMsg');
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: senha });
+    if (error) { msg.hidden = false; msg.textContent = error.message; return; }
+    usuario = data.user;
+    document.getElementById('userInfo').textContent = email;
+    document.getElementById('loginCard').classList.add('hidden');
+    document.getElementById('appCard').classList.remove('hidden');
+    init();
+  } catch (e) {
+    msg.hidden = false;
+    msg.textContent = 'Erro ao conectar: ' + e.message;
+  }
+};
+
+// ---------- Cadastro Militar (UI) ----------
+document.getElementById('btnCadastro').onclick = () => {
+  document.getElementById('appCard').classList.add('hidden');
+  document.getElementById('cadastroCard').classList.remove('hidden');
+  document.getElementById('cadMsg').hidden = true;
+};
+document.getElementById('btnFecharCadastro').onclick = () => {
+  document.getElementById('cadastroCard').classList.add('hidden');
+  document.getElementById('appCard').classList.remove('hidden');
+};
+document.getElementById('btnCadastrarMilitar').onclick = async () => {
+  const msg = document.getElementById('cadMsg');
+  const militar = {
+    matricula: document.getElementById('cadMatricula').value.trim(),
+    nome: document.getElementById('cadNome').value.trim(),
+    secao: document.getElementById('cadSecao').value,
+    escala: document.getElementById('cadEscala').value,
+    motorista: document.getElementById('cadMotorista').checked,
+    ativo: true
+  };
+  if (!militar.matricula || !militar.nome) { msg.hidden = false; msg.textContent = 'Preencha matrícula e nome.'; return; }
+  try {
+    const { error } = await sb.from('militares').insert(militar);
+    if (error) { msg.hidden = false; msg.textContent = error.message; return; }
+    msg.hidden = true;
+    ['cadMatricula','cadNome'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('cadMotorista').checked = false;
+    await carregarDados();
+  } catch (e) {
+    msg.hidden = false;
+    msg.textContent = 'Erro ao cadastrar: ' + e.message;
+  }
+};
+
+// ---------- Inicialização ----------
+async function init() {
+  document.getElementById('competencia').value = competencia;
+  await carregarDados();
+  setupRealtime();
+}
+
+// ---------- Carregar dados ----------
+async function carregarDados() {
+  const { data: m } = await sb.from('militares').select('*').eq('ativo', true).order('nome');
+  militares = m || [];
+
+  const { data: g } = await sb.from('grades_diarias').select('*').eq('competencia', competencia + '-01');
+  grades = g || [];
+
+  render();
+}
+
+// ---------- Render ----------
+function render() {
+  const vazio = document.getElementById('vazioMsg');
+  const tabela = document.querySelector('#appCard .overflow-x-auto');
+  if (!militares || militares.length === 0) {
+    vazio.classList.remove('hidden');
+    tabela.classList.add('hidden');
+    return;
+  }
+  vazio.classList.add('hidden');
+  tabela.classList.remove('hidden');
+
+  const primeiroDia = new Date(competencia + '-01');
+  const ultimoDia = new Date(primeiroDia.getFullYear(), primeiroDia.getMonth() + 1, 0);
+  const diasNoMes = ultimoDia.getDate();
+  const header = Array.from({length: diasNoMes}, (_, i) => `<th class="text-center p-1 border">${i+1}</th>`).join('');
+  document.getElementById('dias-header').innerHTML = header;
+
+  const corpo = militares.map(mil => {
+    const celulas = Array.from({length: diasNoMes}, (_, i) => {
+      const dia = i + 1;
+      const grade = grades.find(g => g.militar_id === mil.id && g.dia === dia);
+      const codigo = grade ? grade.codigo : '';
+      return `<td class="p-1 border"><input class="cell w-full h-full text-center text-xs border" data-mil="${mil.id}" data-dia="${dia}" value="${codigo}"></td>`;
+    }).join('');
+    return `<tr>
+      <td class="p-2 border font-medium">${mil.nome}</td>
+      <td class="p-2 border">${mil.secao}</td>
+      <td class="p-2 border">${mil.escala}</td>
+      ${celulas}
+    </tr>`;
+  }).join('');
+  document.getElementById('tabela-corpo').innerHTML = corpo;
+
+  // Evento change em cada célula
+  document.querySelectorAll('input[data-mil]').forEach(inp => {
+    inp.onchange = async (e) => {
+      const milId = e.target.dataset.mil;
+      const dia = parseInt(e.target.dataset.dia);
+      const codigo = e.target.value.toUpperCase();
+      await salvarGrade(milId, dia, codigo);
+    };
+  });
+}
+
+async function salvarGrade(milId, dia, codigo) {
+  const existente = grades.find(g => g.militar_id === milId && g.dia === dia);
+  if (existente && existente.codigo === codigo) return;
+
+  if (existente) {
+    await sb.from('grades_diarias').update({ codigo }).eq('id', existente.id);
+  } else {
+    await sb.from('grades_diarias').insert({ competencia: competencia + '-01', dia, militar_id: milId, codigo });
+  }
+  await carregarDados(); // recarrega para refletir no Realtime
+}
+
+// ---------- Competência mudou ----------
+document.getElementById('competencia').onchange = (e) => {
+  competencia = e.target.value;
+  carregarDados();
+};
+
+// ---------- Realtime (atualiza ao vivo para todos) ----------
+function setupRealtime() {
+  const channel = sb.channel('grades-channel');
+  channel.on('postgres_changes', { event: '*', schema: 'public', table: 'grades_diarias' }, () => {
+    carregarDados();
+  }).subscribe();
+}
+</script>
+</body>
+</html>
